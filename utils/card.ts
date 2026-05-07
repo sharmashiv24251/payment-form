@@ -1,4 +1,10 @@
 import type { CardType } from "@/types";
+import {
+  AMEX_CARD_LENGTH,
+  AMEX_CVV_LENGTH,
+  STANDARD_CARD_LENGTH,
+  STANDARD_CVV_LENGTH,
+} from "@/constants/card";
 
 export function detectCardType(raw: string): CardType {
   const n = raw.replace(/\s/g, "");
@@ -14,19 +20,19 @@ export function formatCardNumber(raw: string, type: CardType): string {
   if (type === "amex") {
     const p1 = digits.slice(0, 4);
     const p2 = digits.slice(4, 10);
-    const p3 = digits.slice(10, 15);
+    const p3 = digits.slice(10, AMEX_CARD_LENGTH);
     return [p1, p2, p3].filter(Boolean).join(" ");
   }
-  return digits.slice(0, 16).replace(/(.{4})/g, "$1 ").trimEnd();
+  return digits.slice(0, STANDARD_CARD_LENGTH).replace(/(.{4})/g, "$1 ").trimEnd();
 }
 
 export function cvvMaxLength(type: CardType): number {
-  return type === "amex" || type === "unknown" ? 4 : 3;
+  return type === "amex" || type === "unknown" ? AMEX_CVV_LENGTH : STANDARD_CVV_LENGTH;
 }
 
 export function validateCardNumber(raw: string, type: CardType): string | null {
   const digits = raw.replace(/\s/g, "");
-  const maxLen = type === "amex" ? 15 : 16;
+  const maxLen = type === "amex" ? AMEX_CARD_LENGTH : STANDARD_CARD_LENGTH;
   if (digits.length === 0) return "Card number is required";
   if (digits.length < maxLen) return `Must be ${maxLen} digits`;
   return null;

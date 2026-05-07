@@ -1,18 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import type { CardDetails, CardType } from "@/types";
+import type { CardDetails } from "@/types";
+import { CARD_ICONS } from "@/constants/card";
 
 interface CardPreviewProps {
   card: CardDetails;
 }
-
-const CARD_ICONS: Record<CardType, string | null> = {
-  visa: "/cards/Visa Credit Card Icon.svg",
-  mastercard: "/cards/Mastercard Credit Card Icon.svg",
-  amex: "/cards/Amex Credit Card Icon.svg",
-  unknown: "/cards/unknown.svg",
-};
 
 export default function CardPreview({ card }: CardPreviewProps) {
   const icon = CARD_ICONS[card.type];

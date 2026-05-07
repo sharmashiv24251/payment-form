@@ -1,29 +1,28 @@
 "use client";
 
 import Image from "next/image";
-import type { CardType, FormErrors, PaymentFormValues } from "@/types";
+import type { CardType, FormErrors, PaymentFormValues, PaymentStatus } from "@/types";
 import { cvvMaxLength } from "@/utils/card";
+import { CARD_ICONS } from "@/constants/card";
 
 interface PaymentFormProps {
   values: PaymentFormValues;
   cardType: CardType;
   errors: FormErrors;
   onChange: (field: keyof PaymentFormValues, value: string) => void;
+  onSubmit: () => void;
+  status: PaymentStatus;
 }
-
-const CARD_ICONS: Partial<Record<CardType, string>> = {
-  visa: "/cards/Visa Credit Card Icon.svg",
-  mastercard: "/cards/Mastercard Credit Card Icon.svg",
-  amex: "/cards/Amex Credit Card Icon.svg",
-};
 
 const inputClass = "w-full px-3 py-2.5 rounded-lg border border-[#333] bg-[#111] text-white text-sm placeholder-[#444] outline-none focus:border-[#555]";
 const labelClass = "block text-[10px] tracking-widest text-[#888] mb-1.5";
 const errorClass = "text-[10px] text-red-400 mt-1";
 
-export default function PaymentForm({ values, cardType, errors, onChange }: PaymentFormProps) {
+export default function PaymentForm({ values, cardType, errors, onChange, onSubmit, status }: PaymentFormProps) {
   const maxCvv = cvvMaxLength(cardType);
   const cardIcon = CARD_ICONS[cardType];
+  const isProcessing = status === "processing";
+  const disabledInput = `${inputClass} disabled:opacity-40 disabled:cursor-not-allowed`;
 
   return (
     <div className="w-full border border-[#222] rounded-2xl p-5 flex flex-col gap-4">
@@ -35,8 +34,10 @@ export default function PaymentForm({ values, cardType, errors, onChange }: Paym
           value={values.cardholderName}
           onChange={(e) => onChange("cardholderName", e.target.value)}
           placeholder="Jane Smith"
-          className={inputClass}
+          disabled={isProcessing}
+          className={disabledInput}
         />
+        {errors.cardholderName && <p className={errorClass}>{errors.cardholderName}</p>}
       </div>
 
       <div>
@@ -46,7 +47,8 @@ export default function PaymentForm({ values, cardType, errors, onChange }: Paym
             value={values.cardNumber}
             onChange={(e) => onChange("cardNumber", e.target.value)}
             placeholder="0000 0000 0000 0000"
-            className={`${inputClass} pr-14`}
+            disabled={isProcessing}
+            className={`${disabledInput} pr-14`}
             inputMode="numeric"
           />
           {cardIcon && (
@@ -67,7 +69,8 @@ export default function PaymentForm({ values, cardType, errors, onChange }: Paym
             placeholder="MM/YY"
             maxLength={5}
             inputMode="numeric"
-            className={inputClass}
+            disabled={isProcessing}
+            className={disabledInput}
           />
           {errors.expiry && <p className={errorClass}>{errors.expiry}</p>}
         </div>
@@ -79,7 +82,8 @@ export default function PaymentForm({ values, cardType, errors, onChange }: Paym
             placeholder={"·".repeat(maxCvv)}
             maxLength={maxCvv}
             inputMode="numeric"
-            className={inputClass}
+            disabled={isProcessing}
+            className={disabledInput}
           />
           {errors.cvv && <p className={errorClass}>{errors.cvv}</p>}
         </div>
@@ -91,7 +95,8 @@ export default function PaymentForm({ values, cardType, errors, onChange }: Paym
           <select
             value={values.currency}
             onChange={(e) => onChange("currency", e.target.value)}
-            className="px-3 py-2.5 rounded-lg border border-[#333] bg-[#111] text-white text-sm outline-none focus:border-[#555]"
+            disabled={isProcessing}
+            className="px-3 py-2.5 rounded-lg border border-[#333] bg-[#111] text-white text-sm outline-none focus:border-[#555] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <option value="INR">₹ INR</option>
             <option value="USD">$ USD</option>
@@ -101,13 +106,26 @@ export default function PaymentForm({ values, cardType, errors, onChange }: Paym
             onChange={(e) => onChange("amount", e.target.value)}
             placeholder="0.00"
             inputMode="decimal"
-            className={`${inputClass} flex-1`}
+            disabled={isProcessing}
+            className={`${disabledInput} flex-1`}
           />
         </div>
+        {errors.amount && <p className={errorClass}>{errors.amount}</p>}
       </div>
 
-      <button className="w-full py-3 rounded-lg bg-[#2a2a3e] text-white text-sm tracking-widest cursor-pointer border-none hover:bg-[#363652] transition-colors">
-        PAY NOW
+      <button
+        onClick={onSubmit}
+        disabled={isProcessing}
+        className="w-full py-3 rounded-lg bg-[#2a2a3e] text-white text-sm tracking-widest cursor-pointer border-none hover:bg-[#363652] transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+      >
+        {isProcessing ? (
+          <>
+            <span className="inline-block w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            PROCESSING...
+          </>
+        ) : (
+          "PAY NOW"
+        )}
       </button>
     </div>
   );
