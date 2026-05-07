@@ -24,3 +24,35 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Payment form animations */
+@keyframes pf-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes pf-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pf-screen-enter {
+  animation: pf-fade-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.pf-check-path {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
+  animation: pf-draw 0.45s 0.1s ease forwards;
+}
+
+.pf-x-path {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: pf-draw 0.35s ease forwards;
+}
+
+.pf-x-path-2 {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: pf-draw 0.35s 0.05s ease forwards;
+}

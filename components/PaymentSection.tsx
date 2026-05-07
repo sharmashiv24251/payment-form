@@ -3,8 +3,10 @@
 import { useState } from "react";
 import type { CardType, FormErrors, GatewayResponse, PaymentFormValues, PaymentPayload, PaymentStatus } from "@/types";
 import { detectCardType, formatCardNumber, formatExpiry, validateCardNumber, validateCVV, validateExpiry } from "@/utils/card";
+import { formatCurrency } from "@/utils/format";
 import { useTransactionStore } from "@/store/transactionStore";
 import { ABORT_TIMEOUT_MS, MAX_RETRIES } from "@/constants/gateway";
+import { AMOUNT_DEDUPE_DECIMAL_REGEX, AMOUNT_FILTER_REGEX, NAME_FILTER_REGEX } from "@/constants/validation";
 import CardPreview from "./CardPreview";
 import PaymentForm from "./PaymentForm";
 
@@ -17,33 +19,67 @@ const initialValues: PaymentFormValues = {
   currency: "INR",
 };
 
+type TouchedFields = Partial<Record<keyof PaymentFormValues, boolean>>;
+
 export default function PaymentSection() {
-  const [formValues, setFormValues] = useState<PaymentFormValues>(initialValues);
-  const [cardType, setCardType] = useState<CardType>("unknown");
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [status, setStatus] = useState<PaymentStatus>("idle");
-  const [failReason, setFailReason] = useState<string | undefined>();
+  const [formValues, setFormValues]   = useState<PaymentFormValues>(initialValues);
+  const [cardType, setCardType]       = useState<CardType>("unknown");
+  const [errors, setErrors]           = useState<FormErrors>({});
+  const [touched, setTouched]         = useState<TouchedFields>({});
+  const [status, setStatus]           = useState<PaymentStatus>("idle");
+  const [failReason, setFailReason]   = useState<string | undefined>();
   const [transactionId, setTransactionId] = useState<string | null>(null);
-  const [attemptCount, setAttemptCount] = useState(0);
+  const [attemptCount, setAttemptCount]   = useState(0);
   const addTransaction = useTransactionStore((s) => s.addTransaction);
+
+  function computeErrors(vals: PaymentFormValues, type: CardType): FormErrors {
+    const e: FormErrors = {};
+    const name = vals.cardholderName.trim();
+    if (!name) e.cardholderName = "Cardholder name is required";
+    else if (name.length < 2) e.cardholderName = "Name is too short";
+    const cardErr = validateCardNumber(vals.cardNumber, type);
+    if (cardErr) e.cardNumber = cardErr;
+    const expiryErr = validateExpiry(vals.expiry);
+    if (expiryErr) e.expiry = expiryErr;
+    const cvvErr = validateCVV(vals.cvv, type);
+    if (cvvErr) e.cvv = cvvErr;
+    const amt = parseFloat(vals.amount);
+    if (!vals.amount || isNaN(amt) || amt <= 0) e.amount = "Enter a valid amount greater than 0";
+    return e;
+  }
+
+  const isFormValid = Object.keys(computeErrors(formValues, cardType)).length === 0;
 
   function handleChange(field: keyof PaymentFormValues, value: string) {
     let next = value;
+    let nextType = cardType;
+
+    if (field === "cardholderName") {
+      next = value.replace(NAME_FILTER_REGEX, "");
+    }
     if (field === "cardNumber") {
-      const type = detectCardType(value);
-      setCardType(type);
-      next = formatCardNumber(value, type);
-      setErrors((prev) => ({ ...prev, cardNumber: validateCardNumber(next, type) ?? undefined }));
+      nextType = detectCardType(value);
+      setCardType(nextType);
+      next = formatCardNumber(value, nextType);
     }
     if (field === "expiry") {
       next = formatExpiry(value);
-      setErrors((prev) => ({ ...prev, expiry: validateExpiry(next) ?? undefined }));
     }
     if (field === "cvv") {
       next = value.replace(/\D/g, "");
-      setErrors((prev) => ({ ...prev, cvv: validateCVV(next, cardType) ?? undefined }));
     }
-    setFormValues((prev) => ({ ...prev, [field]: next }));
+    if (field === "amount") {
+      next = value.replace(AMOUNT_FILTER_REGEX, "").replace(AMOUNT_DEDUPE_DECIMAL_REGEX, "$1");
+    }
+
+    const nextVals = { ...formValues, [field]: next };
+    setFormValues(nextVals);
+    setErrors(computeErrors(nextVals, nextType));
+  }
+
+  function handleBlur(field: keyof PaymentFormValues) {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    setErrors(computeErrors(formValues, cardType));
   }
 
   async function executePayment(txId: string, attempt: number) {
@@ -72,7 +108,10 @@ export default function PaymentSection() {
       });
       clearTimeout(timerId);
       const data: GatewayResponse = await res.json();
-      const outcome = data.outcome === "success" ? "success" : data.outcome === "timeout" ? "timeout" : "failed";
+      const outcome =
+        data.outcome === "success" ? "success"
+        : data.outcome === "timeout" ? "timeout"
+        : "failed";
       setStatus(outcome);
       setFailReason(data.reason);
       if (outcome === "success") {
@@ -97,19 +136,15 @@ export default function PaymentSection() {
   }
 
   async function handleSubmit() {
-    const newErrors: FormErrors = {};
-    if (!formValues.cardholderName.trim()) newErrors.cardholderName = "Required";
-    const cardErr = validateCardNumber(formValues.cardNumber, cardType);
-    if (cardErr) newErrors.cardNumber = cardErr;
-    const expiryErr = validateExpiry(formValues.expiry);
-    if (expiryErr) newErrors.expiry = expiryErr;
-    const cvvErr = validateCVV(formValues.cvv, cardType);
-    if (cvvErr) newErrors.cvv = cvvErr;
-    if (!formValues.amount || parseFloat(formValues.amount) <= 0) newErrors.amount = "Enter a valid amount";
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
+    const allTouched: TouchedFields = {
+      cardholderName: true, cardNumber: true, expiry: true,
+      cvv: true, amount: true, currency: true,
+    };
+    setTouched(allTouched);
+    const errs = computeErrors(formValues, cardType);
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
     const txId = crypto.randomUUID();
     setTransactionId(txId);
     setAttemptCount(1);
@@ -118,9 +153,9 @@ export default function PaymentSection() {
 
   async function handleRetry() {
     if (!transactionId || attemptCount >= MAX_RETRIES) return;
-    const nextAttempt = attemptCount + 1;
-    setAttemptCount(nextAttempt);
-    await executePayment(transactionId, nextAttempt);
+    const next = attemptCount + 1;
+    setAttemptCount(next);
+    await executePayment(transactionId, next);
   }
 
   function handleCancel() {
@@ -131,10 +166,10 @@ export default function PaymentSection() {
     setFormValues(initialValues);
     setCardType("unknown");
     setErrors({});
+    setTouched({});
   }
 
-  const currencySymbol = formValues.currency === "INR" ? "₹" : "$";
-  const showResult = status === "success" || status === "failed" || status === "timeout";
+  const showResult = status !== "idle";
 
   return (
     <div className="flex flex-col md:flex-row gap-6 w-full md:items-start">
@@ -148,10 +183,12 @@ export default function PaymentSection() {
       />
       {showResult ? (
         <ResultCard
-          status={status as "success" | "failed" | "timeout"}
+          key={status}
+          status={status as "processing" | "success" | "failed" | "timeout"}
           reason={failReason}
           amount={formValues.amount}
-          currencySymbol={currencySymbol}
+          currency={formValues.currency}
+          transactionId={transactionId}
           attemptCount={attemptCount}
           maxRetries={MAX_RETRIES}
           onRetry={handleRetry}
@@ -162,7 +199,12 @@ export default function PaymentSection() {
           values={formValues}
           cardType={cardType}
           errors={errors}
+          touched={touched}
+          isFormValid={isFormValid}
+          attemptCount={attemptCount}
+          maxRetries={MAX_RETRIES}
           onChange={handleChange}
+          onBlur={handleBlur}
           onSubmit={handleSubmit}
           status={status}
         />
@@ -175,136 +217,182 @@ function ResultCard({
   status,
   reason,
   amount,
-  currencySymbol,
+  currency,
+  transactionId,
   attemptCount,
   maxRetries,
   onRetry,
   onCancel,
 }: {
-  status: "success" | "failed" | "timeout";
+  status: "processing" | "success" | "failed" | "timeout";
   reason?: string;
   amount: string;
-  currencySymbol: string;
+  currency: string;
+  transactionId: string | null;
   attemptCount: number;
   maxRetries: number;
   onRetry: () => void;
   onCancel: () => void;
 }) {
-  const canRetry = attemptCount < maxRetries;
+  const canRetry      = attemptCount < maxRetries;
+  const exhausted     = !canRetry;
+  const formattedAmt  = formatCurrency(amount, currency);
+  const txnShort      = transactionId ? "TXN · " + transactionId.split("-")[0].toUpperCase() : null;
+
+  const shell = "w-full border border-[#22263a] rounded-2xl overflow-hidden bg-[#0d0f18]";
+  const body  = "flex flex-col items-center text-center px-8 py-[52px]";
+
+  const ghostBtn =
+    "py-[11px] px-[22px] rounded-lg bg-transparent border border-[#22263a] text-[13px] font-semibold text-[#e4e7f2] cursor-pointer transition-colors hover:border-[#7877e6] hover:text-[#7877e6]";
+  const primaryBtn =
+    "py-[11px] px-[22px] rounded-lg bg-[#5856d6] text-white text-[13px] font-bold cursor-pointer border-none transition-colors hover:bg-[#7877e6]";
+  const disabledBtn =
+    "py-[11px] px-[22px] rounded-lg bg-[#191c2a] text-[#323756] text-[13px] font-bold cursor-not-allowed border-none";
+
+  if (status === "processing") {
+    return (
+      <div key="processing" className={`${shell} pf-screen-enter`}>
+        <div className={body}>
+          <div className="w-[72px] h-[72px] rounded-full bg-[rgba(88,86,214,0.18)] border-2 border-[rgba(88,86,214,0.3)] flex items-center justify-center mb-[22px]">
+            <div
+              className="w-[34px] h-[34px] rounded-full border-[3px] border-[rgba(88,86,214,0.25)] border-t-[#5856d6] animate-spin"
+              role="status"
+              aria-label="Processing"
+            />
+          </div>
+          <p className="text-[20px] font-bold tracking-tight mb-1.5 text-[#e4e7f2]">Processing Payment</p>
+          <p className="text-[13px] text-[#5a6080] leading-relaxed mb-4">Please don&apos;t close this window</p>
+          {formattedAmt && (
+            <p className="text-[36px] font-extrabold tracking-[-0.04em] text-[#e4e7f2] mb-1">{formattedAmt}</p>
+          )}
+          {txnShort && (
+            <span className="font-mono text-[11px] text-[#5a6080] bg-[#191c2a] border border-[#22263a] rounded px-2.5 py-1">
+              {txnShort}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (status === "success") {
     return (
-      <div className="w-full border border-[#1a3a1a] rounded-2xl p-8 flex flex-col items-center justify-center gap-5 min-h-[360px]">
-        <div className="w-20 h-20 rounded-full bg-green-900/30 border-2 border-green-700 flex items-center justify-center">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
+      <div key="success" className={`${shell} pf-screen-enter`}>
+        <div className={body}>
+          <div
+            className="w-[72px] h-[72px] rounded-full bg-[rgba(52,217,148,0.1)] border-2 border-[rgba(52,217,148,0.3)] flex items-center justify-center mb-[22px]"
+            role="img"
+            aria-label="Success"
+          >
+            <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+              <path
+                className="pf-check-path"
+                d="M9 19L16 26L29 12"
+                stroke="#34d994"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <p className="text-[20px] font-bold tracking-tight mb-1.5 text-[#34d994]">Payment Successful</p>
+          <p className="text-[13px] text-[#5a6080] leading-relaxed mb-4">
+            Your payment has been processed successfully
+          </p>
+          {formattedAmt && (
+            <p className="text-[36px] font-extrabold tracking-[-0.04em] text-[#e4e7f2] mb-1">{formattedAmt}</p>
+          )}
+          {txnShort && (
+            <span className="font-mono text-[11px] text-[#5a6080] bg-[#191c2a] border border-[#22263a] rounded px-2.5 py-1 mb-7">
+              {txnShort}
+            </span>
+          )}
+          <button onClick={onCancel} className={`${ghostBtn} min-w-[180px] mt-7`}>
+            Make Another Payment
+          </button>
         </div>
-        <div className="text-center">
-          <p className="text-green-400 text-2xl font-bold mb-2">Payment Successful</p>
-          <p className="text-[#888] text-sm">{currencySymbol}{amount} processed successfully</p>
-        </div>
-        <button
-          onClick={onCancel}
-          className="mt-2 w-full py-3 rounded-xl bg-green-900/40 text-green-400 text-sm font-semibold cursor-pointer border border-green-800 hover:bg-green-900/60 transition-colors"
-        >
-          New Payment
-        </button>
       </div>
     );
   }
 
   if (status === "timeout") {
     return (
-      <div className="w-full border border-[#3a2800] rounded-2xl p-8 flex flex-col items-center justify-center gap-5 min-h-[360px]">
-        <div className="w-20 h-20 rounded-full bg-[#2a1a05] border-2 border-[#7c4a10] flex items-center justify-center">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-        </div>
-        <div className="text-center space-y-2">
-          <p className="text-orange-400 text-2xl font-bold">Request Timed Out</p>
-          <p className="text-[#888] text-sm leading-relaxed">
-            The payment took too long to respond.<br />
-            Your card has <strong className="text-white">not</strong> been charged.
+      <div key="timeout" className={`${shell} pf-screen-enter`}>
+        <div className={body}>
+          <div
+            className="w-[72px] h-[72px] rounded-full bg-[rgba(245,166,35,0.1)] border-2 border-[rgba(245,166,35,0.3)] flex items-center justify-center mb-[22px]"
+            role="img"
+            aria-label="Timeout"
+          >
+            <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+              <circle cx="19" cy="20" r="12" stroke="#f5a623" strokeWidth="2.5" />
+              <path d="M19 15V20.5L22.5 24" stroke="#f5a623" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M16 8H22" stroke="#f5a623" strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M19 5V8"  stroke="#f5a623" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+          </div>
+          <p className="text-[20px] font-bold tracking-tight mb-1.5 text-[#f5a623]">Request Timed Out</p>
+          <p className="text-[13px] text-[#5a6080] leading-relaxed mb-5">
+            The payment took too long to respond.{" "}
+            <br />
+            Your card has <strong className="text-[#e4e7f2]">not</strong> been charged.
           </p>
+          <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-[rgba(245,166,35,0.1)] text-[#f5a623] border border-[rgba(245,166,35,0.2)] mb-5">
+            Attempt {attemptCount} of {maxRetries} timed out
+          </span>
+          <div className="flex gap-2.5 items-center">
+            {canRetry ? (
+              <button onClick={onRetry} className={primaryBtn}>Retry Payment</button>
+            ) : (
+              <button disabled className={disabledBtn}>No retries left</button>
+            )}
+            <button onClick={onCancel} className={ghostBtn}>Cancel</button>
+          </div>
+          {exhausted && (
+            <p className="text-[12px] text-[#5a6080] mt-3.5">
+              Maximum attempts reached. Please try again later.
+            </p>
+          )}
         </div>
-        <span className="border border-orange-800/60 bg-orange-950/40 text-orange-400 text-xs px-4 py-1.5 rounded-full font-medium">
-          Attempt {attemptCount} of {maxRetries} timed out
-        </span>
-        {canRetry ? (
-          <div className="flex gap-3 w-full mt-1">
-            <button
-              onClick={onRetry}
-              className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold cursor-pointer border-none transition-colors"
-            >
-              Retry Payment
-            </button>
-            <button
-              onClick={onCancel}
-              className="flex-1 py-3 rounded-xl bg-transparent border border-[#333] hover:border-[#555] text-white text-sm font-semibold cursor-pointer transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-3 w-full mt-1">
-            <p className="text-[#666] text-xs text-center">Maximum attempts reached. Please try a different card.</p>
-            <button
-              onClick={onCancel}
-              className="w-full py-3 rounded-xl bg-transparent border border-[#333] hover:border-[#555] text-white text-sm font-semibold cursor-pointer transition-colors"
-            >
-              Start Over
-            </button>
-          </div>
-        )}
       </div>
     );
   }
 
   // failed
   return (
-    <div className="w-full border border-[#3a1a1a] rounded-2xl p-8 flex flex-col items-center justify-center gap-5 min-h-[360px]">
-      <div className="w-20 h-20 rounded-full bg-red-900/20 border-2 border-red-800 flex items-center justify-center">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </div>
-      <div className="text-center space-y-2">
-        <p className="text-red-400 text-2xl font-bold">Payment Failed</p>
-        {reason && <p className="text-[#888] text-sm">{reason}</p>}
-      </div>
-      <span className="border border-red-800/60 bg-red-950/40 text-red-400 text-xs px-4 py-1.5 rounded-full font-medium">
-        Attempt {attemptCount} of {maxRetries} failed
-      </span>
-      {canRetry ? (
-        <div className="flex gap-3 w-full mt-1">
-          <button
-            onClick={onRetry}
-            className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold cursor-pointer border-none transition-colors"
-          >
-            Retry Payment
-          </button>
-          <button
-            onClick={onCancel}
-            className="flex-1 py-3 rounded-xl bg-transparent border border-[#333] hover:border-[#555] text-white text-sm font-semibold cursor-pointer transition-colors"
-          >
-            Cancel
-          </button>
+    <div key="failed" className={`${shell} pf-screen-enter`}>
+      <div className={body}>
+        <div
+          className="w-[72px] h-[72px] rounded-full bg-[rgba(240,82,112,0.1)] border-2 border-[rgba(240,82,112,0.3)] flex items-center justify-center mb-[22px]"
+          role="img"
+          aria-label="Failed"
+        >
+          <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+            <path className="pf-x-path"   d="M12 12L26 26" stroke="#f05270" strokeWidth="3" strokeLinecap="round" />
+            <path className="pf-x-path-2" d="M26 12L12 26" stroke="#f05270" strokeWidth="3" strokeLinecap="round" />
+          </svg>
         </div>
-      ) : (
-        <div className="flex flex-col items-center gap-3 w-full mt-1">
-          <p className="text-[#666] text-xs text-center">Maximum attempts reached. Please try a different card.</p>
-          <button
-            onClick={onCancel}
-            className="w-full py-3 rounded-xl bg-transparent border border-[#333] hover:border-[#555] text-white text-sm font-semibold cursor-pointer transition-colors"
-          >
-            Start Over
-          </button>
+        <p className="text-[20px] font-bold tracking-tight mb-1.5 text-[#f05270]">Payment Failed</p>
+        <p className="text-[13px] text-[#5a6080] leading-relaxed mb-5">
+          {reason ?? "Your payment could not be processed."}
+        </p>
+        <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-[rgba(240,82,112,0.1)] text-[#f05270] border border-[rgba(240,82,112,0.2)] mb-5">
+          Attempt {attemptCount} of {maxRetries} failed
+        </span>
+        <div className="flex gap-2.5 items-center">
+          {canRetry ? (
+            <button onClick={onRetry} className={primaryBtn}>Retry Payment</button>
+          ) : (
+            <button disabled className={disabledBtn}>No retries left</button>
+          )}
+          <button onClick={onCancel} className={ghostBtn}>Cancel</button>
         </div>
-      )}
+        {exhausted && (
+          <p className="text-[12px] text-[#5a6080] mt-3.5">
+            Maximum attempts reached. Please try a different card or contact your bank.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
