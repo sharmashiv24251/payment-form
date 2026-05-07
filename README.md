@@ -13,7 +13,6 @@ Make sure you have Node.js 18+ installed, then:
 ```bash
 # Clone and install
 git clone <repo-url>
-cd test
 bun install        # or npm install / yarn install
 
 # Start dev server
