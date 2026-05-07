@@ -8,18 +8,18 @@ interface CardPreviewProps {
 
 export default function CardPreview({ card }: CardPreviewProps) {
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 16, padding: 24, width: 320, color: "white" }}>
-      <div style={{ marginBottom: 32, fontSize: 24 }}>💳</div>
-      <div style={{ letterSpacing: 4, fontSize: 18, marginBottom: 24 }}>
+    <div className="w-full rounded-2xl p-5 text-white" style={{ background: "#1a1a2e" }}>
+      <div className="text-2xl mb-6">💳</div>
+      <div className="tracking-widest text-base mb-6">
         {card.cardNumber || "0000 0000 0000 0000"}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <div className="flex justify-between text-sm">
         <div>
-          <div style={{ fontSize: 10, opacity: 0.6 }}>CARD HOLDER</div>
+          <div className="text-[10px] opacity-50 tracking-widest mb-0.5">CARD HOLDER</div>
           <div>{card.cardholderName || "FULL NAME"}</div>
         </div>
         <div>
-          <div style={{ fontSize: 10, opacity: 0.6 }}>EXPIRES</div>
+          <div className="text-[10px] opacity-50 tracking-widest mb-0.5">EXPIRES</div>
           <div>{card.expiry || "MM / YY"}</div>
         </div>
       </div>

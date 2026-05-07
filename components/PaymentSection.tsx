@@ -22,7 +22,7 @@ export default function PaymentSection() {
   }
 
   return (
-    <div style={{ display: "flex", gap: 64, alignItems: "flex-start" }}>
+    <div className="flex flex-col gap-6 w-full">
       <CardPreview
         card={{
           cardholderName: formValues.cardholderName,

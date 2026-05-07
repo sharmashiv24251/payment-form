@@ -23,33 +23,24 @@ export default function PaymentApp() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "white", display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 32px" }}>
-      {/* Top tab bar */}
-      <div style={{ display: "flex", gap: 4, background: "#111", borderRadius: 10, padding: 4, marginBottom: 48 }}>
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center px-4 py-8">
+      <div className="flex gap-1 bg-[#111] rounded-lg p-1 mb-8">
         {TABS.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => switchTab(key)}
-            style={{
-              padding: "10px 28px",
-              borderRadius: 7,
-              border: "none",
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 500,
-              letterSpacing: 1,
-              background: activeView === key ? "#2a2a3e" : "transparent",
-              color: activeView === key ? "white" : "#666",
-              transition: "all 0.15s",
-            }}
+            className={`px-6 py-2 rounded-md text-xs font-medium tracking-widest transition-all cursor-pointer border-none ${
+              activeView === key ? "bg-[#2a2a3e] text-white" : "bg-transparent text-[#666]"
+            }`}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {/* View */}
-      {activeView === "payment" ? <PaymentSection /> : <TransactionHistory />}
+      <div className="w-full max-w-lg">
+        {activeView === "payment" ? <PaymentSection /> : <TransactionHistory />}
+      </div>
     </div>
   );
 }
