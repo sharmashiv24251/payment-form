@@ -1,16 +1,30 @@
 "use client";
 
-import type { PaymentFormValues } from "@/types";
+import Image from "next/image";
+import type { CardType, FormErrors, PaymentFormValues } from "@/types";
+import { cvvMaxLength } from "@/utils/card";
 
 interface PaymentFormProps {
   values: PaymentFormValues;
+  cardType: CardType;
+  errors: FormErrors;
   onChange: (field: keyof PaymentFormValues, value: string) => void;
 }
 
+const CARD_ICONS: Partial<Record<CardType, string>> = {
+  visa: "/cards/Visa Credit Card Icon.svg",
+  mastercard: "/cards/Mastercard Credit Card Icon.svg",
+  amex: "/cards/Amex Credit Card Icon.svg",
+};
+
 const inputClass = "w-full px-3 py-2.5 rounded-lg border border-[#333] bg-[#111] text-white text-sm placeholder-[#444] outline-none focus:border-[#555]";
 const labelClass = "block text-[10px] tracking-widest text-[#888] mb-1.5";
+const errorClass = "text-[10px] text-red-400 mt-1";
 
-export default function PaymentForm({ values, onChange }: PaymentFormProps) {
+export default function PaymentForm({ values, cardType, errors, onChange }: PaymentFormProps) {
+  const maxCvv = cvvMaxLength(cardType);
+  const cardIcon = CARD_ICONS[cardType];
+
   return (
     <div className="w-full border border-[#222] rounded-2xl p-5 flex flex-col gap-4">
       <p className="text-[10px] tracking-widest text-[#555]">SECURE PAYMENT</p>
@@ -27,12 +41,21 @@ export default function PaymentForm({ values, onChange }: PaymentFormProps) {
 
       <div>
         <label className={labelClass}>CARD NUMBER</label>
-        <input
-          value={values.cardNumber}
-          onChange={(e) => onChange("cardNumber", e.target.value)}
-          placeholder="0000 0000 0000 0000"
-          className={inputClass}
-        />
+        <div className="relative">
+          <input
+            value={values.cardNumber}
+            onChange={(e) => onChange("cardNumber", e.target.value)}
+            placeholder="0000 0000 0000 0000"
+            className={`${inputClass} pr-14`}
+            inputMode="numeric"
+          />
+          {cardIcon && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2">
+              <Image src={cardIcon} alt={cardType} width={36} height={24} className="object-contain" />
+            </span>
+          )}
+        </div>
+        {errors.cardNumber && <p className={errorClass}>{errors.cardNumber}</p>}
       </div>
 
       <div className="flex gap-3">
@@ -42,17 +65,23 @@ export default function PaymentForm({ values, onChange }: PaymentFormProps) {
             value={values.expiry}
             onChange={(e) => onChange("expiry", e.target.value)}
             placeholder="MM/YY"
+            maxLength={5}
+            inputMode="numeric"
             className={inputClass}
           />
+          {errors.expiry && <p className={errorClass}>{errors.expiry}</p>}
         </div>
         <div className="flex-1">
           <label className={labelClass}>CVV</label>
           <input
             value={values.cvv}
             onChange={(e) => onChange("cvv", e.target.value)}
-            placeholder="···"
+            placeholder={"·".repeat(maxCvv)}
+            maxLength={maxCvv}
+            inputMode="numeric"
             className={inputClass}
           />
+          {errors.cvv && <p className={errorClass}>{errors.cvv}</p>}
         </div>
       </div>
 
@@ -71,6 +100,7 @@ export default function PaymentForm({ values, onChange }: PaymentFormProps) {
             value={values.amount}
             onChange={(e) => onChange("amount", e.target.value)}
             placeholder="0.00"
+            inputMode="decimal"
             className={`${inputClass} flex-1`}
           />
         </div>

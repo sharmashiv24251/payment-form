@@ -38,7 +38,7 @@ export default function PaymentApp() {
         ))}
       </div>
 
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-lg md:max-w-4xl">
         {activeView === "payment" ? <PaymentSection /> : <TransactionHistory />}
       </div>
     </div>

@@ -1,24 +1,39 @@
 "use client";
 
-import type { CardDetails } from "@/types";
+import Image from "next/image";
+import type { CardDetails, CardType } from "@/types";
 
 interface CardPreviewProps {
   card: CardDetails;
 }
 
+const CARD_ICONS: Record<CardType, string | null> = {
+  visa: "/cards/Visa Credit Card Icon.svg",
+  mastercard: "/cards/Mastercard Credit Card Icon.svg",
+  amex: "/cards/Amex Credit Card Icon.svg",
+  unknown: "/cards/unknown.svg",
+};
+
 export default function CardPreview({ card }: CardPreviewProps) {
+  const icon = CARD_ICONS[card.type];
+
   return (
-    <div className="w-full rounded-2xl p-5 text-white" style={{ background: "#1a1a2e" }}>
-      <div className="text-2xl mb-6">💳</div>
-      <div className="tracking-widest text-base mb-6">
+    <div className="w-full md:w-72 md:shrink-0 rounded-2xl p-5 text-white bg-[#1a1a2e]">
+      <div className="flex justify-between items-start mb-6">
+        <div className="w-10 h-8 bg-yellow-400/80 rounded-md" />
+        {icon && (
+          <Image src={icon} alt={card.type} width={48} height={30} className="object-contain" />
+        )}
+      </div>
+      <div className="tracking-widest text-base mb-6 font-mono">
         {card.cardNumber || "0000 0000 0000 0000"}
       </div>
       <div className="flex justify-between text-sm">
-        <div>
+        <div className="min-w-0 flex-1 mr-4">
           <div className="text-[10px] opacity-50 tracking-widest mb-0.5">CARD HOLDER</div>
-          <div>{card.cardholderName || "FULL NAME"}</div>
+          <div className="truncate uppercase">{card.cardholderName || "FULL NAME"}</div>
         </div>
-        <div>
+        <div className="shrink-0">
           <div className="text-[10px] opacity-50 tracking-widest mb-0.5">EXPIRES</div>
           <div>{card.expiry || "MM / YY"}</div>
         </div>
