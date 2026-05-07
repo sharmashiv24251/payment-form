@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { CardType, FormErrors, GatewayResponse, PaymentFormValues, PaymentPayload, PaymentStatus } from "@/types";
 import { detectCardType, formatCardNumber, formatExpiry, validateCardNumber, validateCVV, validateExpiry } from "@/utils/card";
+import { useTransactionStore } from "@/store/transactionStore";
 import CardPreview from "./CardPreview";
 import PaymentForm from "./PaymentForm";
 
@@ -21,6 +22,7 @@ export default function PaymentSection() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<PaymentStatus>("idle");
   const [failReason, setFailReason] = useState<string | undefined>();
+  const addTransaction = useTransactionStore((s) => s.addTransaction);
 
   function handleChange(field: keyof PaymentFormValues, value: string) {
     let next = value;
@@ -81,8 +83,19 @@ export default function PaymentSection() {
         body: JSON.stringify(payload),
       });
       const data: GatewayResponse = await res.json();
-      setStatus(data.outcome === "success" ? "success" : data.outcome === "timeout" ? "timeout" : "failed");
+      const outcome = data.outcome === "success" ? "success" : data.outcome === "timeout" ? "timeout" : "failed";
+      setStatus(outcome);
       setFailReason(data.reason);
+      if (outcome === "success") {
+        addTransaction({
+          id: payload.transactionId,
+          amount: payload.amount,
+          currency: payload.currency,
+          status: "success",
+          timestamp: new Date().toISOString(),
+          attemptCount: 1,
+        });
+      }
     } catch {
       setStatus("failed");
       setFailReason("Network error. Please try again.");
