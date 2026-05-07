@@ -11,3 +11,6 @@ export const GATEWAY_FAILURE_PROBABILITY = 0.40;
 
 export const GATEWAY_BASE_DELAY_MIN_MS = 1_500;
 export const GATEWAY_BASE_DELAY_MAX_MS = 3_000;
+
+export const ABORT_TIMEOUT_MS = 6_000;
+export const MAX_RETRIES = 3;
